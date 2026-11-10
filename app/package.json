@@ -1,0 +1,25 @@
+{
+  "name": "haptic-link",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Two-phone real-time haptic mirroring (Capacitor + Socket.io)",
+  "scripts": {
+    "vendor": "node scripts/copy-vendor.js",
+    "postinstall": "node scripts/copy-vendor.js",
+    "sync": "npx cap sync ios",
+    "build:ipa": "bash scripts/build-ipa.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.0",
+    "haptic-touch": "file:./plugins/haptic-touch",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  }
+}

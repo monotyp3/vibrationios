@@ -1,0 +1,9 @@
+{
+  "appId": "com.hapticlink.app",
+  "appName": "Haptic Link",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false
+  }
+}

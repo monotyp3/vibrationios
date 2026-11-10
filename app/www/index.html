@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Haptic Link</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+
+    <!-- Connect screen -->
+    <section id="connect" class="screen">
+      <h1>Haptic Link</h1>
+      <p class="sub">Both phones join the same room code. Then whatever one of you taps, the other one feels.</p>
+
+      <label for="server">Server URL</label>
+      <input id="server" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="https://your-relay.onrender.com">
+
+      <label for="room">Room code</label>
+      <input id="room" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"
+             maxlength="16" placeholder="e.g. SHANE1">
+
+      <button id="joinBtn" class="primary">Join room</button>
+      <p id="connectError" class="error" role="alert"></p>
+    </section>
+
+    <!-- Tap pad screen -->
+    <section id="pad" class="screen hidden">
+      <header class="status">
+        <span id="roomLabel" class="pill"></span>
+        <span id="peerLabel" class="pill">Waiting for partner</span>
+        <span id="pingLabel" class="pill">-- ms</span>
+      </header>
+
+      <div class="pad-wrap">
+        <!-- Ring lights up when the OTHER person is pressing -->
+        <div id="incoming" class="incoming"></div>
+        <button id="tapBtn" class="tap" aria-label="Hold to buzz your partner">
+          <span>HOLD</span>
+        </button>
+      </div>
+
+      <p class="hint">Tap, hold, or tap a rhythm. Your partner feels it the same way.</p>
+      <button id="leaveBtn" class="ghost">Leave room</button>
+    </section>
+
+  </main>
+
+  <!-- Browser builds copied in by scripts/copy-vendor.js -->
+  <script src="vendor/capacitor.js"></script>
+  <script src="vendor/socket.io.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
