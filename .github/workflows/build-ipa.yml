@@ -1,0 +1,159 @@
+# Builds an UNSIGNED HapticLink.ipa on a free GitHub macOS runner.
+# No Apple certificates or provisioning profiles needed: Sideloadly signs the
+# app with your Apple ID when it installs it on your iPhone.
+#
+# How to run: repo > Actions tab > "Build iOS .ipa" > Run workflow.
+# When it finishes, open the run and download "HapticLink-ipa" under Artifacts.
+
+name: Build iOS .ipa
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'haptic-link/app/**'
+      - '.github/workflows/build-ipa.yml'
+
+permissions:
+  contents: read
+
+# If you push twice quickly, cancel the older build.
+concurrency:
+  group: build-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Works whether you uploaded the folder's contents (app/ at the repo root)
+      # or the whole folder (haptic-link/app/).
+      - name: Find the app folder
+        run: |
+          if [ -f app/capacitor.config.json ]; then
+            APP_DIR="app"
+          elif [ -f haptic-link/app/capacitor.config.json ]; then
+            APP_DIR="haptic-link/app"
+          else
+            echo "::error::Could not find app/capacitor.config.json in the repo"
+            exit 1
+          fi
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          echo "Using app folder: $APP_DIR"
+          xcodebuild -version
+          node --version
+
+      - name: Install npm dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: npm install --no-audit --no-fund
+
+      - name: Create and sync the Capacitor iOS project
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: Patch Info.plist
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          PB=/usr/libexec/PlistBuddy
+
+          # Allow ws:// to a computer on your home Wi-Fi (wss:// works everywhere already).
+          $PB -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :NSAppTransportSecurity dict" "$PLIST"
+          $PB -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST"
+          $PB -c "Delete :NSLocalNetworkUsageDescription" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :NSLocalNetworkUsageDescription string 'Connects to a Haptic Link server on your local network.'" "$PLIST"
+
+          # Portrait only.
+          $PB -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
+          $PB -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationPortrait" "$PLIST"
+
+          # Stamp the build number with the GitHub run number.
+          $PB -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST" 2>/dev/null \
+            || $PB -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
+
+      - name: Build app (unsigned, Release)
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          # Capacitor 8 uses Swift Package Manager (App.xcodeproj).
+          # Older CocoaPods projects use App.xcworkspace, so support both.
+          if [ -d ios/App/App.xcworkspace ]; then
+            PROJECT_ARGS=(-workspace ios/App/App.xcworkspace)
+          else
+            PROJECT_ARGS=(-project ios/App/App.xcodeproj)
+          fi
+
+          set -o pipefail
+          xcodebuild "${PROJECT_ARGS[@]}" \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*HapticTouch|BUILD (SUCCEEDED|FAILED)" || true
+
+          if ! grep -q "BUILD SUCCEEDED" xcodebuild.log; then
+            echo "::error::xcodebuild failed. Last 80 lines of the log:"
+            tail -80 xcodebuild.log
+            exit 1
+          fi
+
+      - name: Package .ipa
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/App.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Build output not found at $APP_PATH"
+            exit 1
+          fi
+
+          # An .ipa is just a zip with the .app inside a folder named Payload.
+          rm -rf dist && mkdir -p dist/Payload
+          cp -R "$APP_PATH" dist/Payload/
+          (cd dist && zip -qry HapticLink.ipa Payload && rm -rf Payload)
+
+          ls -lh dist/HapticLink.ipa
+          echo "IPA_PATH=$APP_DIR/dist/HapticLink.ipa" >> "$GITHUB_ENV"
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: HapticLink-ipa
+          path: ${{ env.IPA_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log (only if something failed)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcodebuild-log
+          path: ${{ env.APP_DIR }}/xcodebuild.log
+          if-no-files-found: ignore
